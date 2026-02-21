@@ -34,10 +34,50 @@ def obtener_tokens(expresion):
             })
             id_contador += 1
 
-        elif char_actual in "+-*/":
+        elif char_actual in "+-":
+            # Detectar si es operador unario o binario
+            es_unario = False
+            if not tokens_generados:
+                es_unario = True
+            else:
+                ultimo_token = tokens_generados[-1]
+                if ultimo_token['tipo'] in ('OPERATOR', 'UNARY_OP', 'L_PAREN', 'POW_OP', 'MOD_OP'):
+                    es_unario = True
+            
+            tipo = "UNARY_OP" if es_unario else "OPERATOR"
+            tokens_generados.append({
+                "id": f"{id_contador:02d}",
+                "tipo": tipo,
+                "lexema": char_actual,
+                "posicion": f"Col {pos + 1}"
+            })
+            id_contador += 1
+            pos += 1
+
+        elif char_actual in "*/":
             tokens_generados.append({
                 "id": f"{id_contador:02d}",
                 "tipo": "OPERATOR",
+                "lexema": char_actual,
+                "posicion": f"Col {pos + 1}"
+            })
+            id_contador += 1
+            pos += 1
+
+        elif char_actual == "^":
+            tokens_generados.append({
+                "id": f"{id_contador:02d}",
+                "tipo": "POW_OP",
+                "lexema": char_actual,
+                "posicion": f"Col {pos + 1}"
+            })
+            id_contador += 1
+            pos += 1
+
+        elif char_actual == "%":
+            tokens_generados.append({
+                "id": f"{id_contador:02d}",
+                "tipo": "MOD_OP",
                 "lexema": char_actual,
                 "posicion": f"Col {pos + 1}"
             })

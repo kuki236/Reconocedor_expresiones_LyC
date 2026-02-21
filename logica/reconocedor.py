@@ -3,6 +3,7 @@ class Parser:
         self.tokens = tokens
         self.pos_actual = 0
         self.token_actual = self.tokens[self.pos_actual] if self.tokens else None
+        self.pasos_evaluacion = []
 
     def avanzar(self):
         self.pos_actual += 1
@@ -31,37 +32,53 @@ class Parser:
         
         return arbol_sintactico
 
-    # Regla 1: E -> T E'
     def E(self):
         nodo_izq = self.T()
         return self.E_prima(nodo_izq)
 
-    # Regla 2: E' -> + T E' | - T E' | lambda
     def E_prima(self, nodo_izq):
-        if self.token_actual and self.token_actual['lexema'] in ('+', '-'):
+        if self.token_actual and self.token_actual['lexema'] in ('+', '-') and self.token_actual['tipo'] == 'OPERATOR':
             operador = self.token_actual['lexema']
             self.coincidir('OPERATOR')
             nodo_der = self.T()
             nuevo_nodo = {'tipo': 'Operacion', 'valor': operador, 'izq': nodo_izq, 'der': nodo_der}
             return self.E_prima(nuevo_nodo)
-        return nodo_izq # lambda
+        return nodo_izq
 
-    # Regla 3: T -> F T'
     def T(self):
-        nodo_izq = self.F()
+        nodo_izq = self.P()
         return self.T_prima(nodo_izq)
 
-    # Regla 4: T' -> * F T' | / F T' | lambda
     def T_prima(self, nodo_izq):
-        if self.token_actual and self.token_actual['lexema'] in ('*', '/'):
+        if self.token_actual and self.token_actual['lexema'] in ('*', '/', '%'):
             operador = self.token_actual['lexema']
-            self.coincidir('OPERATOR')
-            nodo_der = self.F()
+            if operador == '*':
+                self.coincidir('OPERATOR')
+            elif operador == '/':
+                self.coincidir('OPERATOR')
+            elif operador == '%':
+                self.coincidir('MOD_OP')
+            nodo_der = self.P()
             nuevo_nodo = {'tipo': 'Operacion', 'valor': operador, 'izq': nodo_izq, 'der': nodo_der}
             return self.T_prima(nuevo_nodo)
-        return nodo_izq # lambda
+        return nodo_izq
 
-    # Regla 5: F -> ( E ) | num
+    def P(self):
+        nodo_izq = self.U()
+        if self.token_actual and self.token_actual['tipo'] == 'POW_OP':
+            self.coincidir('POW_OP')
+            nodo_der = self.P()  # Recursión derecha para asociatividad derecha
+            return {'tipo': 'Operacion', 'valor': '^', 'izq': nodo_izq, 'der': nodo_der}
+        return nodo_izq
+
+    def U(self):
+        if self.token_actual and self.token_actual['tipo'] == 'UNARY_OP':
+            operador = self.token_actual['lexema']
+            self.coincidir('UNARY_OP')
+            nodo = self.U()
+            return {'tipo': 'Unario', 'valor': operador, 'operando': nodo}
+        return self.F()
+
     def F(self):
         if self.token_actual and self.token_actual['tipo'] == 'NUMBER':
             token = self.coincidir('NUMBER')
@@ -78,17 +95,48 @@ class Parser:
             raise SyntaxError(f"Se esperaba un Número o '(', se encontró '{encontrado}'")
 
 
-def evaluar_arbol(nodo):
+def evaluar_arbol(nodo, pasos=None):
+    if pasos is None:
+        pasos = []
+    
     if nodo['tipo'] == 'Numero':
-        return nodo['valor']
+        pasos.append(f"Número: {nodo['valor']}")
+        return nodo['valor'], pasos
     
-    izq = evaluar_arbol(nodo['izq'])
-    der = evaluar_arbol(nodo['der'])
+    if nodo['tipo'] == 'Unario':
+        operando, pasos = evaluar_arbol(nodo['operando'], pasos)
+        if nodo['valor'] == '-':
+            resultado = -operando
+        else:  # '+'
+            resultado = operando
+        pasos.append(f"Unario {nodo['valor']}: {nodo['valor']}{operando} = {resultado}")
+        return resultado, pasos
     
-    if nodo['valor'] == '+': return izq + der
-    if nodo['valor'] == '-': return izq - der
-    if nodo['valor'] == '*': return izq * der
-    if nodo['valor'] == '/':
+    izq, pasos = evaluar_arbol(nodo['izq'], pasos)
+    der, pasos = evaluar_arbol(nodo['der'], pasos)
+    
+    if nodo['valor'] == '+':
+        resultado = izq + der
+        operacion = f"Suma"
+    elif nodo['valor'] == '-':
+        resultado = izq - der
+        operacion = f"Resta"
+    elif nodo['valor'] == '*':
+        resultado = izq * der
+        operacion = f"Multiplicación"
+    elif nodo['valor'] == '/':
         if der == 0:
             raise ZeroDivisionError("No se puede dividir por cero.")
-        return izq / der
+        resultado = izq / der
+        operacion = f"División"
+    elif nodo['valor'] == '^':
+        resultado = izq ** der
+        operacion = f"Potencia"
+    elif nodo['valor'] == '%':
+        if der == 0:
+            raise ZeroDivisionError("No se puede aplicar módulo con cero.")
+        resultado = izq % der
+        operacion = f"Módulo"
+    
+    pasos.append(f"{operacion}: {izq} {nodo['valor']} {der} = {resultado}")
+    return resultado, pasos
